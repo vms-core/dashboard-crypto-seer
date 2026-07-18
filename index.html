@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Status dos Containers</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --border: #2a2e38;
+    --text: #e6e8eb;
+    --muted: #8b93a1;
+    --green: #3ecf8e;
+    --red: #f2545b;
+    --yellow: #e3b341;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  #meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 1rem; word-break: break-all; }
+  .row { display: flex; justify-content: space-between; font-size: 0.85rem; margin: 4px 0; color: var(--muted); }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .badge.running { background: rgba(62,207,142,0.15); color: var(--green); }
+  .badge.exited, .badge.dead { background: rgba(242,84,91,0.15); color: var(--red); }
+  .badge.restarting, .badge.paused { background: rgba(227,179,65,0.15); color: var(--yellow); }
+  #error { color: var(--red); margin-top: 16px; }
+  #staleWarning {
+    display: none;
+    background: rgba(242,84,91,0.12);
+    border: 1px solid var(--red);
+    color: var(--red);
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+  }
+  input#staleMinutes { max-width: 80px; display: inline-block; margin-left: 8px; }
+  input {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 6px;
+    width: 100%;
+    max-width: 480px;
+    margin-bottom: 20px;
+  }
+  label { font-size: 0.8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+
+<h1>🐳 Status dos Containers</h1>
+<div id="meta">Carregando...</div>
+
+<label for="gistUrl">URL RAW do Gist (cole aqui uma vez, fica salvo no navegador):</label>
+<input id="gistUrl" placeholder="https://gist.githubusercontent.com/USUARIO/GIST_ID/raw/status.json">
+
+<label for="staleMinutes">Considerar offline se não atualizar há (minutos):
+  <input id="staleMinutes" type="number" min="1" value="5">
+</label>
+
+<div id="staleWarning">⚠️ Sem atualização recente — a máquina on-premise pode estar offline. Os dados abaixo são o último status conhecido.</div>
+<div id="error"></div>
+<div id="grid" class="grid"></div>
+
+<script>
+const REFRESH_MS = 30000; // atualiza a cada 30s
+const storedUrl = localStorage.getItem("gistRawUrl") || "";
+document.getElementById("gistUrl").value = storedUrl;
+
+const storedStale = localStorage.getItem("staleMinutes") || "5";
+document.getElementById("staleMinutes").value = storedStale;
+
+document.getElementById("gistUrl").addEventListener("change", (e) => {
+  localStorage.setItem("gistRawUrl", e.target.value.trim());
+  load();
+});
+
+document.getElementById("staleMinutes").addEventListener("change", (e) => {
+  localStorage.setItem("staleMinutes", e.target.value);
+  load();
+});
+
+function badgeClass(status) {
+  return status.toLowerCase();
+}
+
+async function load() {
+  const url = document.getElementById("gistUrl").value.trim();
+  const errorEl = document.getElementById("error");
+  const metaEl = document.getElementById("meta");
+  const gridEl = document.getElementById("grid");
+  errorEl.textContent = "";
+
+  if (!url) {
+    metaEl.textContent = "Informe a URL RAW do gist acima.";
+    return;
+  }
+
+  try {
+    // cache-buster para garantir que sempre pega a versão mais recente
+    const res = await fetch(url + (url.includes("?") ? "&" : "?") + "t=" + Date.now());
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+
+    const updatedAt = new Date(data.updated_at);
+    const ageMinutes = (Date.now() - updatedAt.getTime()) / 60000;
+    const thresholdMinutes = parseFloat(document.getElementById("staleMinutes").value) || 5;
+    const isStale = ageMinutes > thresholdMinutes;
+
+    metaEl.textContent = `Host: ${data.host} · Última atualização: ${updatedAt.toLocaleString("pt-BR")} (há ${ageMinutes.toFixed(1)} min)`;
+
+    const staleWarningEl = document.getElementById("staleWarning");
+    staleWarningEl.style.display = isStale ? "block" : "none";
+
+    gridEl.innerHTML = "";
+    data.containers.forEach(c => {
+      const card = document.createElement("div");
+      card.className = "card";
+      // Se o dado está velho, não confiamos mais no status reportado
+      const displayStatus = isStale ? "desconhecido" : c.status;
+      const badgeCls = isStale ? "restarting" : badgeClass(c.status);
+      card.innerHTML = `
+        <h3>${c.name}</h3>
+        <div class="row"><span>Status</span> <span class="badge ${badgeCls}">${displayStatus}</span></div>
+        <div class="row"><span>Health</span> <span>${isStale ? "n/a" : c.health}</span></div>
+        <div class="row"><span>Imagem</span> <span>${c.image}</span></div>
+      `;
+      gridEl.appendChild(card);
+    });
+  } catch (err) {
+    errorEl.textContent = "Erro ao carregar status: " + err.message;
+  }
+}
+
+load();
+setInterval(load, REFRESH_MS);
+</script>
+
+</body>
+</html>
