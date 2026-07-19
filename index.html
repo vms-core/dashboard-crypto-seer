@@ -79,7 +79,7 @@
 <div id="meta">Carregando...</div>
 
 <label for="gistUrl">URL RAW do Gist (cole aqui uma vez, fica salvo no navegador):</label>
-<input id="gistUrl" placeholder="https://gist.githubusercontent.com/USUARIO/GIST_ID/raw/status.json" value="https://gist.githubusercontent.com/viniciussacco/53957132b9fb104a876696acc33bdc86/raw/status.json">
+<input id="gistUrl" placeholder="https://gist.githubusercontent.com/USUARIO/GIST_ID/raw/status.json">
 
 <label for="staleMinutes">Considerar offline se não atualizar há (minutos):
   <input id="staleMinutes" type="number" min="1" value="5">
@@ -91,7 +91,7 @@
 
 <script>
 const REFRESH_MS = 30000; // atualiza a cada 30s
-const storedUrl = localStorage.getItem("gistRawUrl") || "";
+const storedUrl = localStorage.getItem("gistRawUrl") || "https://gist.githubusercontent.com/viniciussacco/53957132b9fb104a876696acc33bdc86/raw/status.json";
 document.getElementById("gistUrl").value = storedUrl;
 
 const storedStale = localStorage.getItem("staleMinutes") || "5";
